@@ -9,7 +9,7 @@
 import Alamofire
 import UIKit
 
-class DetailViewController: UITableViewController {
+class DetailViewController: UIViewController, UITableViewDelegate, UITableViewDataSource {
 
     enum Section : Int {
         case headers, body
@@ -20,7 +20,11 @@ class DetailViewController: UITableViewController {
             oldValue?.cancel()
             
             title = request?.description
-            refreshControl?.endRefreshing()
+            if #available(iOS 10.0, *) {
+                self.tableView?.refreshControl?.endRefreshing()
+            } else {
+                // Fallback on earlier versions
+            }
             headers.removeAll()
             body = nil
             elapsedTime = nil
@@ -31,6 +35,8 @@ class DetailViewController: UITableViewController {
     var body: String?
     var elapsedTime: TimeInterval?
     var segueIdentifier: String?
+    var tableView: UITableView!
+    
     
     static let numberFormatter: NumberFormatter = {
         let formatter = NumberFormatter()
@@ -42,12 +48,30 @@ class DetailViewController: UITableViewController {
     
     override func viewDidLoad() {
         super.viewDidLoad()
-
-        self.view.backgroundColor = UIColor.blue
-        refreshControl?.addTarget(self, action: #selector(DetailViewController.refresh), for: .valueChanged)
+//        self.navigationController?.navigationBar.isTranslucent = false// 关闭后没有透明效果了 default ： yes
+//        self.edgesForExtendedLayout = UIRectEdge(rawValue: 0)// 自动下移64
+//        self.automaticallyAdjustsScrollViewInsets = false// 可以让关闭在系统Nav下自动下移20
         
-        self.tableView = UITableView(frame:CGRect(x: 0, y: 20, width: 100, height: 200), style:UITableViewStyle.plain)
-//        self.tableView =
+        
+        
+        self.tableView = UITableView(frame:CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height), style:UITableViewStyle.plain)
+        self.tableView.delegate = self
+        self.tableView.dataSource = self
+        
+        self.tableView.register(UITableViewCell.classForCoder(), forCellReuseIdentifier: "head")
+        self.view.addSubview(self.tableView)
+        
+        if #available(iOS 10.0, *) {
+            self.tableView.refreshControl?.addTarget(self, action: #selector(DetailViewController.refresh), for: .valueChanged)
+        } else {
+            // Fallback on earlier versions
+        }
+        
+        
+    }
+    
+    override func viewWillDisappear(_ animated: Bool) {
+        self.hidesBottomBarWhenPushed = false
     }
     
     override func viewDidAppear(_ animated: Bool) {
@@ -61,7 +85,11 @@ class DetailViewController: UITableViewController {
             return
         }
         
-        refreshControl?.beginRefreshing()
+        if #available(iOS 10.0, *) {
+            self.tableView?.refreshControl?.beginRefreshing()
+        } else {
+            // Fallback on earlier versions
+        }
         let start = CACurrentMediaTime()
         
         let requestComplete: (HTTPURLResponse?, Result<String>) -> Void = { response, result in
@@ -84,7 +112,11 @@ class DetailViewController: UITableViewController {
                 }
             }
             self.tableView.reloadData()
-            self.refreshControl?.endRefreshing()
+            if #available(iOS 10.0, *) {
+                self.tableView.refreshControl?.endRefreshing()
+            } else {
+                // Fallback on earlier versions
+            }
         }
         
         if let request = request as? DataRequest {
@@ -130,12 +162,12 @@ class DetailViewController: UITableViewController {
 
     // MARK: - Table view data source
 
-    override func numberOfSections(in tableView: UITableView) -> Int {
+     func numberOfSections(in tableView: UITableView) -> Int {
         // #warning Incomplete implementation, return the number of sections
         return 2
     }
 
-    override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         // #warning Incomplete implementation, return the number of rows
         
         switch Section(rawValue: section)! {
@@ -147,27 +179,38 @@ class DetailViewController: UITableViewController {
     }
 
     
-    override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         
         switch Section(rawValue: (indexPath as NSIndexPath).section)! {
         case .headers:
-            let cell = tableView.dequeueReusableCell(withIdentifier: "Header")!
+            var cell = tableView.dequeueReusableCell(withIdentifier: "Header")
+            
+            if cell == nil {
+                cell  = UITableViewCell(style: UITableViewCellStyle.value1, reuseIdentifier: "Header")
+            }
+            
             let field = headers.keys.sorted(by: <)[indexPath.row]
             let value = headers[field]
             
-            cell.textLabel?.text = field
-            cell.detailTextLabel?.text = value
+            cell?.textLabel?.text = field
+            cell?.detailTextLabel?.text = value
             
-            return cell
+            return cell!
         case .body:
-            let cell = tableView.dequeueReusableCell(withIdentifier: "Body")!
-            cell.textLabel?.text = body
+            var cell = tableView.dequeueReusableCell(withIdentifier: "Body")
+            if cell == nil {
+                cell = UITableViewCell(style: UITableViewCellStyle.default, reuseIdentifier: "Body")
+            }
+            cell?.textLabel?.text = body
+            cell?.textLabel?.numberOfLines = 0
+//            let cell = tableView.dequeueReusableCell(withIdentifier: "Body")!
+//            cell.textLabel?.text = body
             
-            return cell
+            return cell!
         }
     }
  
-    override func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
+     func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
         if self.tableView(tableView, numberOfRowsInSection: section) == 0 {
             return ""
         }
@@ -179,16 +222,16 @@ class DetailViewController: UITableViewController {
         }
     }
     
-    override func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
+     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
         switch Section(rawValue: (indexPath as NSIndexPath).section)! {
         case .body:
-            return 300
+            return 400
         default:
             return tableView.rowHeight
         }
     }
 
-    override func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
+     func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
         if Section(rawValue: section) == .body, let elapsedTime = elapsedTime {
             let elapsedTimeText = DetailViewController.numberFormatter.string(from: elapsedTime as NSNumber) ?? "???"
             return "Elapsed Time: \(elapsedTimeText) sec"
